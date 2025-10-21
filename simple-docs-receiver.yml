@@ -22,6 +22,10 @@ on:
         type: string
         default: 'https://github.com/OpenZeppelin/openzeppelin-contracts'
 
+# Configuration: Update this base path for different repositories
+env:
+  BASE_OUTPUT_PATH: 'content/contracts'
+
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
@@ -56,25 +60,17 @@ jobs:
       - name: Determine output directory
         id: config
         run: |
-          REPO_NAME="${{ inputs.repository_name }}"
           TAG_NAME="${{ inputs.tag_name }}"
 
-          # Determine output directory based on repository and tag
-          if [[ "$TAG_NAME" =~ ^v([0-9]+) ]]; then
+          # Extract major version from tag (e.g., v5.1.0 -> 5, release-v6.0 -> 6)
+          if [[ "$TAG_NAME" =~ v([0-9]+) ]]; then
             MAJOR_VERSION="${BASH_REMATCH[1]}"
-            if [[ "$REPO_NAME" == *"contracts-upgradeable"* ]]; then
-              OUTPUT_DIR="content/contracts-upgradeable/v${MAJOR_VERSION}.x/api"
-            else
-              OUTPUT_DIR="content/contracts/v${MAJOR_VERSION}.x/api"
-            fi
+            OUTPUT_DIR="${{ env.BASE_OUTPUT_PATH }}/v${MAJOR_VERSION}.x/api"
           else
             # Fallback for non-standard tags
-            if [[ "$REPO_NAME" == *"contracts-upgradeable"* ]]; then
-              OUTPUT_DIR="content/contracts-upgradeable/5.x/api"
-            else
-              OUTPUT_DIR="content/contracts/5.x/api"
-            fi
+            OUTPUT_DIR="${{ env.BASE_OUTPUT_PATH }}/5.x/api"
           fi
+          echo "📂 Output directory: $OUTPUT_DIR"
 
           # Use provided URL or construct from repository name
           if [ -n "${{ inputs.source_repo_url }}" ]; then
@@ -86,7 +82,6 @@ jobs:
           echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
           echo "repo-url=$REPO_URL" >> $GITHUB_OUTPUT
 
-          echo "📂 Output directory: $OUTPUT_DIR"
           echo "🔗 Repository URL: $REPO_URL"
 
       - name: Generate API Documentation
