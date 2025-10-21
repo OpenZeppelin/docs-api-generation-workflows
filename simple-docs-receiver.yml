@@ -25,7 +25,7 @@ on:
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Log trigger information
         run: |
@@ -39,21 +39,26 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Determine output directory
         id: config
         run: |
           REPO_NAME="${{ inputs.repository_name }}"
           TAG_NAME="${{ inputs.tag_name }}"
-          
+
           # Determine output directory based on repository and tag
           if [[ "$TAG_NAME" =~ ^v([0-9]+) ]]; then
             MAJOR_VERSION="${BASH_REMATCH[1]}"
@@ -70,24 +75,24 @@ jobs:
               OUTPUT_DIR="content/contracts/5.x/api"
             fi
           fi
-          
+
           # Use provided URL or construct from repository name
           if [ -n "${{ inputs.source_repo_url }}" ]; then
             REPO_URL="${{ inputs.source_repo_url }}.git"
           else
             REPO_URL="https://github.com/${{ inputs.repository_name }}.git"
           fi
-          
+
           echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
           echo "repo-url=$REPO_URL" >> $GITHUB_OUTPUT
-          
+
           echo "📂 Output directory: $OUTPUT_DIR"
           echo "🔗 Repository URL: $REPO_URL"
 
       - name: Generate API Documentation
         run: |
           echo "🔄 Generating API documentation..."
-          
+
           node scripts/generate-api-docs.js \
             --repo "${{ steps.config.outputs.repo-url }}" \
             --branch "${{ inputs.tag_name }}" \
@@ -97,11 +102,11 @@ jobs:
         run: |
           git config --local user.email "docs-automation@openzeppelin.com"
           git config --local user.name "OpenZeppelin Docs Bot"
-          
+
           # Check for changes
           if [ -n "$(git status --porcelain)" ]; then
             echo "📝 Committing documentation changes..."
-            
+
             git add .
             git commit -m "📚 Update API docs for ${{ inputs.repository_name }} ${{ inputs.tag_name }}
 
@@ -109,11 +114,11 @@ jobs:
             - Tag: ${{ inputs.tag_name }}
             - Output: ${{ steps.config.outputs.output-dir }}
             - Triggered: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-            
+
             Auto-generated via workflow_dispatch trigger"
-            
+
             git push origin main
-            
+
             echo "✅ Documentation updated successfully"
           else
             echo "ℹ️  No changes detected - documentation is up to date"
