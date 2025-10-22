@@ -1,0 +1,55 @@
+# TEMPLATE: Source Repository Trigger - Commit-Based Deployment
+# Copy to: .github/workflows/trigger-docs-generation.yml (in your source repo)
+#
+# SETUP INSTRUCTIONS:
+# 1. Replace {WORKFLOW_NAME} with your docs workflow name in env section (line 11)
+#    Example: generate-api-docs-my-contract
+# 2. Customize branch name if needed (line 12)
+#    Default is 'main', but could be 'master', 'develop', etc.
+# 3. Add DOCS_REPO_TOKEN secret to your repository settings
+# 4. Update docs repo name if not OpenZeppelin/docs (line 45)
+
+name: Trigger API Documentation Generation
+
+env:
+  WORKFLOW_NAME: '{WORKFLOW_NAME}'  # TODO: Replace with your workflow filename (without .yml extension)
+  TARGET_BRANCH: 'main'  # TODO: Customize branch name if needed
+
+on:
+  push:
+    branches:
+      - ${{ env.TARGET_BRANCH }}
+
+jobs:
+  trigger-docs-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine trigger type and ref
+        id: trigger
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/${{ env.TARGET_BRANCH }}" ]; then
+            # Commit-based trigger on target branch
+            echo "ref_name=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "trigger_type=commit" >> $GITHUB_OUTPUT
+            echo "📋 Trigger type: Commit to ${{ env.TARGET_BRANCH }}"
+            echo "🔗 Commit: ${{ github.sha }}"
+          else
+            echo "⚠️  Not a ${{ env.TARGET_BRANCH }} branch push, skipping"
+            exit 0
+          fi
+
+      - name: Trigger documentation generation
+        if: steps.trigger.outputs.ref_name != ''
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+        run: |
+          gh workflow run ${{ env.WORKFLOW_NAME }}.yml \
+            --repo OpenZeppelin/docs \
+            --field tag_name="${{ steps.trigger.outputs.ref_name }}" \
+            --field trigger_type="${{ steps.trigger.outputs.trigger_type }}"
+
+          echo "✅ Triggered documentation generation for ${{ steps.trigger.outputs.ref_name }}"
+          echo "📍 Repository: ${{ github.repository }}"
+          echo "🔖 Reference: ${{ steps.trigger.outputs.ref_name }}"
+          echo "📋 Type: ${{ steps.trigger.outputs.trigger_type }}"
