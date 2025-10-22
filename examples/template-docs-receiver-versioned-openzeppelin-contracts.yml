@@ -1,0 +1,146 @@
+# TEMPLATE: Docs Repository Receiver - Versioned Paths
+# Copy to: .github/workflows/generate-api-docs-{YOUR_CONTRACT}.yml (in docs repo)
+#
+# SETUP INSTRUCTIONS:
+# 1. Update workflow name (line 15)
+# 2. Update default tag_name (line 13)
+# 3. Configure environment variables (lines 21-24):
+#    - SOURCE_REPO: GitHub owner/repo name
+#    - SOURCE_REPO_URL: Full git URL
+#    - BASE_OUTPUT_PATH: Where to put generated docs
+#    - USE_VERSIONED_PATHS: 'true' for versioned paths (e.g., 5.x/api)
+# 4. Customize version extraction regex if needed (line 77)
+
+name: Generate API Docs - openzeppelin-contracts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name or commit SHA to generate docs from'
+        required: true
+        type: string
+        default: 'release-v5.5'  # TODO: Update default version
+      trigger_type:
+        description: 'Trigger type (tag or commit)'
+        required: false
+        type: string
+        default: 'tag'
+
+# TODO: Configure these environment variables for your contract
+env:
+  SOURCE_REPO: 'OpenZeppelin/openzeppelin-contracts'  # TODO: Update
+  SOURCE_REPO_URL: 'https://github.com/OpenZeppelin/openzeppelin-contracts.git'  # TODO: Update
+  BASE_OUTPUT_PATH: 'content/contracts'  # TODO: Update
+  USE_VERSIONED_PATHS: 'true'  # Use 'true' for versioned paths (5.x/api), 'false' for non-versioned (api)
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Log trigger information
+        run: |
+          echo "🚀 API Documentation Generation Triggered"
+          echo "📦 Repository: ${{ env.SOURCE_REPO }}"
+          echo "🏷️  Tag/Ref: ${{ inputs.tag_name }}"
+          echo "📋 Trigger type: ${{ inputs.trigger_type }}"
+
+      - name: Checkout docs repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine output directory
+        id: config
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          TRIGGER_TYPE="${{ inputs.trigger_type }}"
+          BASE_PATH="${{ env.BASE_OUTPUT_PATH }}"
+          USE_VERSIONED="${{ env.USE_VERSIONED_PATHS }}"
+
+          if [[ "$USE_VERSIONED" == "false" ]]; then
+            # Non-versioned path (e.g., community-contracts/api)
+            OUTPUT_DIR="${BASE_PATH}/api"
+            echo "📁 Using non-versioned path"
+          elif [[ "$TRIGGER_TYPE" == "commit" ]]; then
+            # Commit-based trigger uses /latest/api
+            OUTPUT_DIR="${BASE_PATH}/latest/api"
+            echo "🔄 Using latest path for commit-based trigger"
+          else
+            # Tag-based trigger: extract major version
+            if [[ "$TAG_NAME" =~ v([0-9]+) ]]; then
+              MAJOR_VERSION="${BASH_REMATCH[1]}"
+              OUTPUT_DIR="${BASE_PATH}/${MAJOR_VERSION}.x/api"
+              echo "📊 Detected version: ${MAJOR_VERSION}.x"
+            else
+              # Fallback for non-standard tags
+              OUTPUT_DIR="${BASE_PATH}/latest/api"
+              echo "⚠️  Non-standard tag format, using latest"
+            fi
+          fi
+
+          echo "📂 Output directory: $OUTPUT_DIR"
+          echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+
+      - name: Generate API Documentation
+        run: |
+          echo "🔄 Generating API documentation..."
+
+          node scripts/generate-api-docs.js \
+            --repo "${{ env.SOURCE_REPO_URL }}" \
+            --branch "${{ inputs.tag_name }}" \
+            --api-output "${{ steps.config.outputs.output-dir }}"
+
+      - name: Commit and push documentation
+        run: |
+          git config --local user.email "docs-automation@openzeppelin.com"
+          git config --local user.name "OpenZeppelin Docs Bot"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "📝 Committing documentation changes..."
+
+            git add .
+            git commit -m "📚 Update API docs for ${{ env.SOURCE_REPO }} ${{ inputs.tag_name }}
+
+            - Repository: ${{ env.SOURCE_REPO }}
+            - Ref: ${{ inputs.tag_name }}
+            - Trigger: ${{ inputs.trigger_type }}
+            - Output: ${{ steps.config.outputs.output-dir }}
+            - Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+            Auto-generated via workflow_dispatch"
+
+            git push origin main
+
+            echo "✅ Documentation updated successfully"
+          else
+            echo "ℹ️  No changes detected - documentation is up to date"
+          fi
+
+      - name: Create job summary
+        run: |
+          echo "## 📚 API Documentation Generation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Source Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository:** ${{ env.SOURCE_REPO }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Reference:** ${{ inputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger Type:** ${{ inputs.trigger_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Output" >> $GITHUB_STEP_SUMMARY
+          echo "- **Directory:** ${{ steps.config.outputs.output-dir }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Complete" >> $GITHUB_STEP_SUMMARY
