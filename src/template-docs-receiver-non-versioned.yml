@@ -105,14 +105,22 @@ jobs:
             --branch "${{ inputs.tag_name }}" \
             --api-output "${{ steps.config.outputs.output-dir }}"
 
-      - name: Commit and push documentation
+      - name: Create Pull Request for documentation changes
+        id: create_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "docs-automation@openzeppelin.com"
           git config --local user.name "OpenZeppelin Docs Bot"
 
           if [ -n "$(git status --porcelain)" ]; then
-            echo "📝 Committing documentation changes..."
+            echo "📝 Creating branch and committing documentation changes..."
 
+            # Create unique branch name
+            BRANCH_NAME="docs/api-update-${{ env.SOURCE_REPO }}-${{ inputs.tag_name }}"
+            BRANCH_NAME=$(echo "$BRANCH_NAME" | sed 's/\//-/g' | sed 's/OpenZeppelin-//g')
+
+            git checkout -b "$BRANCH_NAME"
             git add .
             git commit -m "📚 Update API docs for ${{ env.SOURCE_REPO }} ${{ inputs.tag_name }}
 
@@ -124,11 +132,30 @@ jobs:
 
             Auto-generated via workflow_dispatch"
 
-            git push origin main
+            git push origin "$BRANCH_NAME"
 
-            echo "✅ Documentation updated successfully"
+            # Create Pull Request
+            gh pr create --title "[CI] Update API docs for ${{ env.SOURCE_REPO }} ${{ inputs.tag_name }}" \
+                     --body "## API Documentation Update
+
+            This Pull Request updates the API documentation.
+
+            ### Source Information
+            - **Repository:** ${{ env.SOURCE_REPO }}
+            - **Reference:** ${{ inputs.tag_name }}
+            - **Trigger Type:** ${{ inputs.trigger_type }}
+            - **Output Directory:** ${{ steps.config.outputs.output-dir }}
+            - **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+            Auto-generated via workflow_dispatch" \
+                     --base main \
+                     --head "$BRANCH_NAME" || echo "⚠️  Pull Request creation failed"
+
+            echo "✅ Pull Request created successfully"
+            echo "pr-created=true" >> $GITHUB_OUTPUT
           else
             echo "ℹ️  No changes detected - documentation is up to date"
+            echo "pr-created=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create job summary
