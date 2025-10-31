@@ -17,6 +17,10 @@ Source Repo Push/Tag → Trigger Workflow → Docs Repo Workflow → Generate & 
 
 ## Implementation
 
+### Prerequisites
+
+Make sure you have followed the [instructions of adding the API docgen templates](https://github.com/OpenZeppelin/docs#solidity-docgen) before continuting!
+
 ### 1. Setup Docs Repository Workflow
 
 Choose the appropriate receiver template:
